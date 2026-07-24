@@ -3,7 +3,7 @@
 	"name": "AindentPaper",
 	"version": "2.0.0",
 	"minAppVersion": "1.4.0",
-	"description": "针对文本段落首行缩进的插件，支持启用段落首行缩进（含 <br> 自动拆分）和段落拆分器（独立开关），并提供纸质纹理背景效果。",
+	"description": "A plugin for paragraph indentation, paragraph splitting, and paper texture background effects.",
 	"author": "Shao Yan",
 	"authorUrl": "",
 	"isDesktopOnly": false
