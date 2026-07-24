@@ -1,3 +1,81 @@
+# AindentPaper - Obsidian Paragraph Indentation & Paper Texture Plugin
+
+An enhanced plugin designed for Obsidian, providing paragraph indentation, paragraph splitter, and paper texture background features to make your note reading experience more comfortable and aesthetically pleasing.
+
+## ✨ Features
+
+### 1. Paragraph First-Line Indentation
+Adds first-line indentation to text paragraphs in preview mode, conforming to Chinese typesetting conventions.
+- **Independent Toggle**: Can be enabled or disabled at any time
+- **Paragraph Spacing Adjustment**: Customize spacing between paragraphs (1-10x)
+- **Line Height Adjustment**: Customize text line height (20-40px)
+- **Smart Exclusion**: Automatically excludes non-body elements like headings, lists, code blocks, blockquotes, and tables
+
+### 2. Paragraph Splitter
+Automatically splits `<p>...<br>...</p>` in preview mode into multiple independent `<p>` paragraphs, making paragraph spacing settings take effect.
+- **Independent Toggle**: Can be controlled independently even when "Paragraph First-Line Indentation" is disabled
+- **High-Performance Optimization**:
+  - Uses TreeWalker for efficient traversal, automatically skipping code blocks, tables, and other areas
+  - Batch processing based on `requestIdleCallback` without blocking the main thread
+  - Batch replacement by parent container to reduce DOM reflow
+  - Initial startup only scans the current visible view, faster startup for long text scenarios
+  - Incremental processing: Listens to DOM changes via MutationObserver to process new content in real-time
+
+### 3. Paper Texture Background
+Adds beautiful paper texture background effects to note editing and preview views, creating an immersive writing atmosphere.
+
+#### Texture Styles
+| Style | Description |
+|-------|-------------|
+|  Kraft Paper | Warm brown tones, classic kraft paper texture |
+| 📄 Fine White Paper | Delicate and soft white paper, suitable for daily writing |
+| 📜 Old Paper/Parchment | Vintage yellowed effect, creates a nostalgic atmosphere |
+| 📃 Textured Paper | Paper with obvious fiber texture |
+| 🔵 Cyan Gray Paper | Elegant cyan-gray tone, fresh and refined |
+| 🪟 Frosted Glass | Semi-transparent white base + delicate frosted grain |
+| 📐 Grid Background | Customizable grid line background |
+|  No Texture | Pure background color, no texture effect |
+
+#### Texture Adjustment
+- **Transparency**: 0-100% adjustable, controls texture display intensity
+- **Dark Mode Adaptation**: Automatically adapts to Obsidian dark theme
+
+#### Grid Background Exclusive Settings
+When selecting "Grid Background" style, you can further customize:
+- **Grid Line Color**: Set line colors for light/dark mode separately
+- **Grid Size**: 10-50px adjustable, controls grid density
+- **Grid Line Thickness**: 0.5-3px adjustable
+- **Grid Line Style**: Solid / Dashed
+
+#### Whiteboard Canvas Texture
+- Can apply paper texture effects to the entire whiteboard canvas background
+- Whiteboard cards maintain solid color background in preview mode, display grid background in edit mode
+- Does not affect the original background color settings of whiteboard cards
+
+## 📖 Usage Instructions
+
+### Installation
+
+#### Install from Obsidian Community Plugins (Recommended)
+1. Open Obsidian Settings → Community plugins
+2. Turn off "Restricted mode"
+3. Click "Browse", search for "AindentPaper"
+4. Click "Install", then "Enable"
+
+#### Manual Installation
+1. Download the latest version from [GitHub Releases](https://github.com/louvlwu/obsidian-aindentpaper/releases)
+2. Place the extracted folder into your Obsidian vault's `.obsidian/plugins/` directory
+3. Rename the folder to `obsidian-aindentpaper`
+4. Enable the plugin in Obsidian settings
+
+### Settings
+
+Plugin settings are divided into two major feature groups, each with an independent enable/disable toggle:
+
+**Paragraph First-Line Indentation**
+
+---
+
 # AindentPaper - Obsidian 段落首行缩进与纸质纹理插件
 
 一款为 Obsidian 设计的增强插件，提供**段落首行缩进**、**段落拆分器**和**纸质纹理背景**功能，让笔记阅读体验更加舒适美观。
