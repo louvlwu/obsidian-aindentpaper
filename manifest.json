@@ -3,7 +3,7 @@
 	"name": "AindentPaper",
 	"version": "2.0.0",
 	"minAppVersion": "1.4.0",
-	"description": "A plugin for paragraph indentation, paragraph splitting, and paper texture background effects.",
+	"description": "Paragraph Indentation & Paper Texture Plugin.",
 	"author": "Shao Yan",
 	"authorUrl": "",
 	"isDesktopOnly": false
