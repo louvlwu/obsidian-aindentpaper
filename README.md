@@ -144,7 +144,7 @@ Plugin settings are divided into two major feature groups, each with an independ
 
 ### 安装
 
-#### 从 Obsidian 社区插件安装（暂未上架）
+#### 从 Obsidian 社区插件安装（推荐）
 
 1. 打开 Obsidian 设置 → 第三方插件
 2. 关闭"安全模式"
