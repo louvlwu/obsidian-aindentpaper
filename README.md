@@ -1,84 +1,203 @@
-# AindentPaper - Obsidian Paragraph Indentation & Paper Texture Plugin
+# AindentPaper
 
-An enhanced plugin designed for Obsidian, providing paragraph indentation, paragraph splitter, and paper texture background features to make your note reading experience more comfortable and aesthetically pleasing.
+**English** | [中文](#aindentpaper中文)
+
+An enhancement plugin for [Obsidian](https://obsidian.md) that provides **paragraph first-line indentation**, a **paragraph splitter** and **paper texture backgrounds**, making your reading experience more comfortable and elegant.
 
 ## ✨ Features
 
-### 1. Paragraph First-Line Indentation
-Adds first-line indentation to text paragraphs in preview mode, conforming to Chinese typesetting conventions.
-- **Independent Toggle**: Can be enabled or disabled at any time
-- **Paragraph Spacing Adjustment**: Customize spacing between paragraphs (1-10x)
-- **Line Height Adjustment**: Customize text line height (20-40px)
-- **Smart Exclusion**: Automatically excludes non-body elements like headings, lists, code blocks, blockquotes, and tables
+### 1. Paragraph first-line indentation
 
-### 2. Paragraph Splitter
-Automatically splits `<p>...<br>...</p>` in preview mode into multiple independent `<p>` paragraphs, making paragraph spacing settings take effect.
-- **Independent Toggle**: Can be controlled independently even when "Paragraph First-Line Indentation" is disabled
-- **High-Performance Optimization**:
-  - Uses TreeWalker for efficient traversal, automatically skipping code blocks, tables, and other areas
-  - Batch processing based on `requestIdleCallback` without blocking the main thread
-  - Batch replacement by parent container to reduce DOM reflow
-  - Initial startup only scans the current visible view, faster startup for long text scenarios
-  - Incremental processing: Listens to DOM changes via MutationObserver to process new content in real-time
+Adds first-line indentation to text paragraphs in the preview view, following East Asian typesetting conventions.
 
-### 3. Paper Texture Background
-Adds beautiful paper texture background effects to note editing and preview views, creating an immersive writing atmosphere.
+- **Independent toggle** — enable or disable at any time
+- **Paragraph spacing** — customize the spacing between paragraphs (1–10×)
+- **Line height** — customize text line height (20–40 px)
+- **Smart exclusion** — automatically excludes headings, lists, code blocks, quote blocks, tables and other non-body elements
 
-#### Texture Styles
+### 2. Paragraph splitter
+
+Automatically splits `<p>...<br>...</p>` in the preview view into multiple independent `<p>` paragraphs, so that paragraph spacing settings take effect.
+
+- **Independent toggle** — works even when "paragraph first-line indentation" is disabled
+- **High-performance implementation**:
+  - TreeWalker-based traversal that automatically skips code blocks, tables and similar regions
+  - Batched processing on `requestIdleCallback`, never blocking the main thread
+  - Bulk replacement per parent container to minimize DOM reflows
+  - Initial startup only scans the currently visible view — faster startup on long documents
+- **Incremental processing** — a MutationObserver watches DOM changes and processes newly added content in real time
+
+### 3. Paper texture backgrounds
+
+Adds beautiful paper texture backgrounds to the editing and preview views for an immersive writing atmosphere.
+
+#### Texture styles
+
 | Style | Description |
-|-------|-------------|
-|  Kraft Paper | Warm brown tones, classic kraft paper texture |
-| 📄 Fine White Paper | Delicate and soft white paper, suitable for daily writing |
-| 📜 Old Paper/Parchment | Vintage yellowed effect, creates a nostalgic atmosphere |
-| 📃 Textured Paper | Paper with obvious fiber texture |
-| 🔵 Cyan Gray Paper | Elegant cyan-gray tone, fresh and refined |
-| 🪟 Frosted Glass | Semi-transparent white base + delicate frosted grain |
-| 📐 Grid Background | Customizable grid line background |
-|  No Texture | Pure background color, no texture effect |
+|------|------|
+| 🟫 Kraft paper | Warm brownish-yellow tone, classic kraft texture |
+| 📄 Fine white paper | Fine, soft white paper for everyday writing |
+| 📜 Aged / parchment | Vintage yellowed effect with a nostalgic feel |
+| 📃 Rough-grain paper | Paper with visible fiber grain |
+| 🔵 Blue-gray paper | Understated blue-gray tone, fresh and elegant |
+| 🪟 Frosted glass | Translucent white base with a fine frosted grain |
+| 📐 Grid background | Fully customizable grid-line background |
+| ⬜ No texture | Plain background color, no texture |
 
-#### Texture Adjustment
-- **Transparency**: 0-100% adjustable, controls texture display intensity
-- **Dark Mode Adaptation**: Automatically adapts to Obsidian dark theme
+#### Texture adjustment
 
-#### Grid Background Exclusive Settings
-When selecting "Grid Background" style, you can further customize:
-- **Grid Line Color**: Set line colors for light/dark mode separately
-- **Grid Size**: 10-50px adjustable, controls grid density
-- **Grid Line Thickness**: 0.5-3px adjustable
-- **Grid Line Style**: Solid / Dashed
+- **Opacity** — adjustable from 0–100% to control texture intensity
+- **Dark mode support** — automatically adapts to Obsidian's dark theme
 
-#### Whiteboard Canvas Texture
-- Can apply paper texture effects to the entire whiteboard canvas background
-- Whiteboard cards maintain solid color background in preview mode, display grid background in edit mode
-- Does not affect the original background color settings of whiteboard cards
+#### Grid-specific settings
 
-## 📖 Usage Instructions
+When the "Grid background" style is selected, you can further customize:
+
+- **Grid line color** — separate colors for light and dark mode
+- **Grid size** — adjustable from 10–50 px to control grid density
+- **Grid line width** — adjustable from 0.5–3 px
+- **Grid line style** — solid or dashed
+
+#### Canvas backdrop texture
+
+- Apply the paper texture to the entire Canvas backdrop
+- Canvas cards keep a plain background in preview and show the grid background while editing
+- Never interferes with the cards' own background color settings
+
+## 📖 Usage
 
 ### Installation
 
-#### Install from Obsidian Community Plugins (Recommended)
-1. Open Obsidian Settings → Community plugins
+#### From Obsidian community plugins (recommended)
+
+1. Open Obsidian **Settings → Community plugins**
 2. Turn off "Restricted mode"
-3. Click "Browse", search for "AindentPaper"
+3. Click "Browse" and search for **AindentPaper**
 4. Click "Install", then "Enable"
 
-#### Manual Installation
+#### Manual installation
+
 1. Download the latest version from [GitHub Releases](https://github.com/louvlwu/obsidian-aindentpaper/releases)
-2. Place the extracted folder into your Obsidian vault's `.obsidian/plugins/` directory
+2. Extract the folder into your vault's `.obsidian/plugins/` directory
 3. Rename the folder to `obsidian-aindentpaper`
 4. Enable the plugin in Obsidian settings
 
 ### Settings
 
-Plugin settings are divided into two major feature groups, each with an independent enable/disable toggle:
+Settings are organized into two feature groups, each with its own master toggle:
 
-**Paragraph First-Line Indentation**
+#### Paragraph first-line indentation
+
+```
+Enable paragraph first-line indentation [toggle]
+  ├─ Paragraph first-line indent [toggle]
+  ├─ Paragraph spacing [slider: 1–10]
+  └─ Text line height [slider: 20–40 px]
+```
+
+#### Paper texture background
+
+```
+Enable paper texture background [toggle]
+  ├─ Texture style [dropdown: kraft / fine white / aged / rough-grain / blue-gray / frosted glass / grid / none]
+  ├─ Texture opacity [slider: 0–100%]
+  └─ Canvas backdrop texture [toggle]
+```
+
+#### Grid background settings (shown when "Grid background" is selected)
+
+```
+Grid background settings
+  ├─ Enable grid background [toggle]
+  ├─ Grid line color (light mode) [color picker]
+  ├─ Grid line color (dark mode) [color picker]
+  └─ Content area shadow opacity [slider: 0–1]
+```
+
+#### Paragraph splitter
+
+```
+Paragraph splitter (independent toggle) [toggle]
+```
+
+### Commands
+
+The following commands are available from the command palette (Ctrl/Cmd + P):
+
+- **Rescan and split paragraphs** — manually re-run the paragraph splitter on the current document
+- **Toggle paragraph splitter** — quickly enable/disable the paragraph splitter
+- **Reset all settings** — restore every setting to its default value
+
+## 🔧 Technical highlights
+
+- **High performance** — TreeWalker traversal, `requestIdleCallback` batching and bulk DOM operations
+- **Scoped styling** — every style rule is strictly limited to the note content area; sidebars, status bar etc. are untouched
+- **Canvas-safe** — Canvas areas are automatically excluded and remain fully functional
+- **Table-safe** — table elements are detected and excluded, table rendering is never broken
+- **Dark mode** — fully adapted to Obsidian's dark theme
+- **Responsive** — works on desktop and mobile
+
+## 📋 Compatibility
+
+- Minimum Obsidian version: 1.4.0
+- Desktop and mobile supported
+- Compatible with dark and light themes
+
+## 🐛 Known issues
+
+- The paragraph splitter only processes content in the preview (reading) view; the editing view is unaffected
+- The dashed grid style may look less than ideal at very small grid sizes
+
+## 📝 Changelog
+
+### v2.0.1
+- Fixed: first-line indentation persisted after disabling the plugin until Obsidian was restarted.
+- Fixed: first-line indentation was lost when exporting notes to PDF.
+- Improved: paragraph spacing was too large in preview view for Canvas card content, note text and PDF exports.
+- Fixed: the fold icon before headings was not displayed.
+- Improved: horizontal rules were not distinct enough in the editing view when the plugin was enabled.
+- Background: in preview view, when scrolling a 100k+ character document with complex formatting (text, tables, lists, code blocks, …) at a fast pace, newly scrolled-in pages appeared blank first and the view stuttered until content rendered. A new **"Long-document scrolling performance optimization (experimental)"** setting addresses this; being experimental, it can be disabled if conflicts occur.
+
+### v2.0.0
+Previously the first-line indentation style leaked into Obsidian table content and quote blocks, causing visual inconsistencies between editing and preview.
+- Indentation no longer applies to content inside native tables.
+- Added Canvas backdrop paper texture support.
+- Improved paragraph splitter startup performance: startup is deferred via `onLayoutReady`, and only the currently visible note is processed at launch — further reducing stutter on very long documents.
+- Improved Canvas card background handling; the cards' own background color is preserved.
+- Indentation no longer applies to content inside native quote blocks.
+- Fixed: table cells showed the paper texture while editing table content.
+- With "Enable paragraph first-line indentation" turned on, fixed:
+  1. the native table drag handle shifting to the wrong column in editing view;
+  2. a white underlay beneath tables and a horizontal scrollbar appearing at the bottom;
+  3. unclear cell selection and color chaos across the whole table.
+- Fixed table rendering interference.
+- Various bug fixes and performance improvements.
+- Added the grid background style with customizable color, size, line width and line style.
+
+### v1.0.2
+
+- Fixed paper texture appearing in table cells in the editing view
+- Improved dark mode adaptation
+
+## 📄 License
+
+[MIT](LICENSE)
+
+## 🙏 Acknowledgements
+
+Thanks to the developers and users of the Obsidian community for their support.
 
 ---
 
-# AindentPaper - Obsidian 段落首行缩进与纸质纹理插件
+If this plugin helps you, a Star ⭐ on GitHub is much appreciated!
 
-一款为 Obsidian 设计的增强插件，提供**段落首行缩进**、**段落拆分器**和**纸质纹理背景**功能，让笔记阅读体验更加舒适美观。
+---
+
+# AindentPaper（中文）
+
+[English](#aindentpaper) | **中文**
+
+一款为 [Obsidian](https://obsidian.md) 设计的增强插件，提供**段落首行缩进**、**段落拆分器**和**纸质纹理背景**功能，让笔记阅读体验更加舒适美观。
 
 ## ✨ 功能特性
 
@@ -204,25 +323,6 @@ Plugin settings are divided into two major feature groups, each with an independ
 - **切换段落拆分器开关**：快速切换段落拆分器的启用/禁用状态
 - **重置所有设置**：将所有设置恢复为默认值
 
-## 🎨 效果展示
-
-### 段落首行缩进
-
-启用后，预览视图中的文本段落将自动添加首行缩进，符合中文排版规范。
-
-### 纸质纹理
-
-多种纹理风格可选，让笔记界面更加美观：
-
-- 牛皮纸：温暖的复古风格
-- 细腻白纸：简洁现代的书写体验
-- 旧纸/羊皮纸：怀旧文艺氛围
-- 网格背景：规整的网格线，适合笔记和绘图
-
-### 段落拆分器
-
-对于使用 `<br>` 换行的笔记内容，段落拆分器可将其自动拆分为独立段落，使段间距设置生效。
-
 ## 🔧 技术特性
 
 - **高性能**：使用 TreeWalker、requestIdleCallback、批量 DOM 操作等优化手段
@@ -251,7 +351,7 @@ Plugin settings are divided into two major feature groups, each with an independ
 - 优化预览视图下，白板卡片内容、笔记文本内容段间距和 PDF 导出内容段间距太大的问题；
 - 修复文本标题前折叠图标不显示的文体；
 - 优化编辑视图下，插件启用后，分割线不够明显的体验问题；
-- 背景：预览视图下，在打开一个 10 万+字的复杂格式（文本、表格、列表、代码块等等）的长文本时，在滚动阅读，并且速度稍快时，后面滚动上来的页面一开始是空白，这时开始卡顿，直到空白页面刷新出来内容后才能继续往下滚动，所以这就产生了阅读长文本卡顿严重的不好体验。所以，增加了“长文本滚动性能优化(实验性功能)”这个设置项，该项仅作为实验性功能，如果遇到冲突，可以禁用。
+- 背景：预览视图下，在打开一个 10 万+字的复杂格式（文本、表格、列表、代码块等等）的长文本时，在滚动阅读，并且速度稍快时，后面滚动上来的页面一开始是空白，这时开始卡顿，直到空白页面刷新出来内容后才能继续往下滚动，所以这就产生了阅读长文本卡顿严重的不好体验。所以，增加了"长文本滚动性能优化(实验性功能)"这个设置项，该项仅作为实验性功能，如果遇到冲突，可以禁用。
 
 ### v2.0.0
 插件使用中，段落首行缩进样式会应用到 obsidian 表格内容和引用块中的内容上，这样会导致编辑和预览时出现视觉体验偏差。 
@@ -261,7 +361,7 @@ Plugin settings are divided into two major feature groups, each with an independ
 - 优化白板卡片背景处理，保留卡片原本背景色。
 - 插件的缩进功能不再对原生引用块中的内容生效。
 - 修复 表格内容编辑时，单元格背景显示纸质纹理的问题。 
-- 当开启插件“启用段落首行缩进”时，修复如下问题：
+- 当开启插件"启用段落首行缩进"时，修复如下问题：
  ①、导致编辑视图下，原生表格的 拖拽手柄右移错列；
  ②、表格下层出现白底和底部出现横向滚动条；
  ③、表格内容选中不明确，全表色彩混乱现象。
@@ -276,7 +376,7 @@ Plugin settings are divided into two major feature groups, each with an independ
 
 ## 📄 许可证
 
-MIT License
+[MIT](LICENSE)
 
 ## 🙏 致谢
 
