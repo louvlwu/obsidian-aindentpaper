@@ -14,6 +14,11 @@
   /* 功能开关变量 */
   --paragraph-indent-enabled: 0;
 
+  /* 继承型缩进变量：所有 text-indent 应用点统一引用此变量。
+     开关开启时在 body 上设为 2em；需排除的容器把它重设为 0，
+     后代经 CSS 自定义属性继承自动解析为 0，无需 !important 优先级对抗 */
+  --aindentpaper-indent: 0;
+
   /* 文本段间距/行高 */
   --text-paragraph-gap: 2.0;
   --text-line-height: 24;
@@ -24,12 +29,29 @@
    =============================================================================
    告诉浏览器：markdown 内容区域的样式/布局变化不会影响外部元素，
    从而减少拆分段落时的样式重算和布局重排范围。
-   - contain: content = contain: layout style (不含 size/paint)
-   - 不会影响固定定位元素、不会截断溢出内容
+   - 使用 contain: layout style（不含 paint/size）
+   - 不会截断溢出内容（保留标题折叠图标等溢出定位元素的可见性）
+   - 不会影响固定定位元素
+   注意：不可使用 contain: content，因为它等价于 layout paint style，
+   paint containment 会裁剪超出 padding-box 的后代绘制，导致标题
+   折叠图标（position:absolute + 负 left 值定位在左边距）被隐藏。
    ============================================================================= */
 body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view .markdown-preview-sizer {
-  contain: content;
+  contain: layout style;
+}
+
+/* =============================================================================
+   标题折叠图标位置修正
+   =============================================================================
+   layout containment 使 .markdown-preview-sizer 成为绝对定位后代的包含块，
+   折叠图标以负 left 定位在标题文本左侧，部分区域超出可视边缘。
+   通过 translateX 微调右移，使图标完整显示在内容区域内。
+   transform 不影响布局流，性能开销为零。
+   ============================================================================= */
+body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .heading-collapse-indicator,
+body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .heading-collapse-indicator {
+  transform: translateX(4px);
 }
 
 /* =============================================================================
@@ -42,19 +64,21 @@ body:not(.aindentpaper-paragraph-indent-enabled) {
 }
 body.aindentpaper-paragraph-indent-enabled {
   --paragraph-indent-enabled: 1;
+  /* 开关开启：继承型缩进变量设为 2em，所有应用点经继承取值 */
+  --aindentpaper-indent: 2em;
 }
 
 /* 预览视图段落首行缩进 */
 body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered p,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view p {
   position: relative;
-  text-indent: calc(var(--paragraph-indent-enabled) * 2em) !important;
+  text-indent: var(--aindentpaper-indent);
 }
 
 /* 编辑视图 - 基线规则：所有 .cm-line 默认不缩进 */
-/* 采用"低优先级基线 + 高优先级覆盖"模式，确保表格等元素天然不被缩进 */
+/* 基线为普通声明即可：主缩进规则选择器优先级更高，天然覆盖此基线 */
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-content .cm-line {
-  text-indent: 0 !important;
+  text-indent: 0;
 }
 
 /* 编辑视图段落首行缩进 - 仅对非特殊行生效 */
@@ -62,36 +86,16 @@ body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-typ
 /* 注意：Obsidian CM6 中表格行使用 .HyperMD-table-N（N为数字编号），
    而非 .HyperMD-table-row，因此用 [class*="HyperMD-table"] 属性选择器
    匹配所有 HyperMD-table 变体（-1, -2, -row 等） */
-/* 此规则优先级高于基线规则，仅对需要缩进的行生效 */
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-line:not(.cm-hmd-frontmatter):not(.HyperMD-header):not(.HyperMD-list-line):not(.HyperMD-quote):not(.HyperMD-codeblock):not(.cm-formatting):not([class*="HyperMD-table"]):not(:has(.table-wrapper)) {
+/* 此规则优先级高于基线规则，仅对需要缩进的行生效；
+   取值走 --aindentpaper-indent 继承变量：表格等容器重设变量为 0 后，
+   容器内即使被本规则命中的 .cm-line 也自动解析为 0，无需 !important */
+body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-line:not(.cm-hmd-frontmatter):not(.HyperMD-header):not(.HyperMD-list-line):not(.HyperMD-quote):not(.HyperMD-codeblock):not(.cm-formatting):not([class*="HyperMD-table"]) {
   position: relative;
-  text-indent: calc(var(--paragraph-indent-enabled) * 2em) !important;
-}
-
-/* 编辑视图 - 表格组件强制排除（最高优先级） */
-/* 关键修复：使用与主规则完全相同的选择器深度（.markdown-source-view .cm-line:not(...)）
-   以确保优先级 >= 主规则，能可靠覆盖主缩进规则 */
-/* Obsidian 实时预览模式下，表格渲染为 .cm-table-widget 容器，
-   其内部 .cm-line 不包含 HyperMD-table 类名，因此主规则的 :not([class*="HyperMD-table"]) 无法排除 */
-/* 使用与主规则同结构的 :not() 链，确保表格内的 .cm-line 被正确排除 */
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .cm-line:not(.cm-hmd-frontmatter):not(.HyperMD-header):not(.HyperMD-list-line):not(.HyperMD-quote):not(.HyperMD-codeblock):not(.cm-formatting):not([class*="HyperMD-table"]),
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .table-cell-wrapper,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .cm-content,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .cm-contentContainer,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .cm-content .cm-line,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .cm-contentContainer .cm-line {
-  text-indent: 0 !important;
-}
-
-/* 编辑视图 - 全局表格行兜底排除（最高优先级） */
-/* 兜底：使用通配符 * 确保 .cm-table-widget 内任何元素都不被缩进 */
-/* 此规则位于主规则之后，且选择器深度匹配主规则，确保能覆盖 */
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget * {
-  text-indent: 0 !important;
+  text-indent: var(--aindentpaper-indent);
 }
 
 /* =============================================================================
-   编辑视图 - Obsidian 原生表格强制排除首行缩进（两层保险）
+   编辑视图 - Obsidian 原生表格排除首行缩进（变量继承方案）
    =============================================================================
    【DOM 实测确认】实时预览下原生表格是一个块级 widget，结构为：
      .cm-content
@@ -104,53 +108,51 @@ body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-typ
                            ├─ div.table-row-drag-handle        行六点拖拽手柄
                            └─ (激活单元格) .cm-editor > .cm-content > .cm-line  嵌套编辑器
    .cm-table-widget（外层块）与 .table-wrapper（内层容器）两个类都真实存在。
-   表格 widget 是 contenteditable="false" 块级元素、与 .cm-line 平级，并不从某个 .cm-line 继承 text-indent，
-   所以缩进本身不会穿透表格。真正破坏表格的是【曾经对 th/td 等强制 position:static】：它移除了
-   拖拽手柄（th/td 的绝对定位子元素）赖以锚定的原生 position:relative，导致六点手柄错列、单元格
-   失去定位上下文（拖拽命中逃逸→整表选区闪烁）、表格溢出白底与横向滚动条。该 position:static
-   覆盖已全部移除，本区仅保留 text-indent 归零，避免激活单元格的内嵌编辑器被主缩进规则命中。
+   表格 widget 是 contenteditable="false" 块级元素、与 .cm-line 平级，
+   并不从某个 .cm-line 继承 text-indent，所以缩进本身不会穿透表格。
+   真正破坏表格的是【曾经对 th/td 等强制 position:static】——该覆盖已全部移除，
+   本区仅负责 text-indent 归零，且严禁改动 position（拖拽手柄/选区依赖原生定位）。
 
-   两层保险：
-   第一层（防御）：主缩进规则末尾追加 :not(:has(.table-wrapper))，且规则(1)以 :has(.table-wrapper)
-     兜底承载行——因 widget 实际与 .cm-line 平级、并不在 .cm-line 内，这两处属防御性冗余。
-   第二层（生效）：规则(2)(3)直接作用于表格内部真实元素，确保任何残留的 text-indent 都被还原。 */
-
-/* (1) 承载表格的父级 .cm-line 兜底还原（带完整 :not() 链，优先级 0,13,1 > 主规则 0,12,1） */
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-line:not(.cm-hmd-frontmatter):not(.HyperMD-header):not(.HyperMD-list-line):not(.HyperMD-quote):not(.HyperMD-codeblock):not(.cm-formatting):not([class*="HyperMD-table"]):has(.table-wrapper) {
-  text-indent: 0 !important;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-}
-
-/* (2) 表格容器及其全部后代：切断 text-indent 继承，使单元格内容与六点拖拽手柄归位 */
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .table-wrapper,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .table-wrapper * {
-  text-indent: 0 !important;
-}
-
-/* (3) 表格内嵌套单元格编辑器的 .cm-line（激活单元格时出现，会被主规则直接命中）：
-   带完整 :not() 链把优先级抬到 0,13,1 > 主规则 0,12,1，仅还原缩进；
-   不再改动 position，避免破坏 Obsidian 表格原生定位（拖拽手柄/选区） */
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .table-wrapper .cm-line:not(.cm-hmd-frontmatter):not(.HyperMD-header):not(.HyperMD-list-line):not(.HyperMD-quote):not(.HyperMD-codeblock):not(.cm-formatting):not([class*="HyperMD-table"]) {
-  text-indent: 0 !important;
+   实现：在表格两个容器上把 --aindentpaper-indent 重设为 0 —— 自定义属性沿
+   DOM 树继承，容器内任何后代（含激活单元格的嵌套 .cm-editor .cm-line，
+   即使被上方主规则命中）的 var(--aindentpaper-indent) 都解析为 0。
+   容器自身与普通后代同时补普通声明 text-indent: 0 兜底。
+   （原基于 :has 的父级防御与 .cm-table-widget * 通配符兜底均已移除：
+     前者不匹配实际 DOM 且损害大文档性能，后者在变量继承下冗余。） */
+body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget,
+body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .table-wrapper {
+  --aindentpaper-indent: 0;
+  text-indent: 0;
 }
 
 /* 预览视图可读行宽下的段落缩进 */
 body.aindentpaper-paragraph-indent-enabled .markdown-preview-view.is-readable-line-width .markdown-preview-sizer p {
-  text-indent: calc(var(--paragraph-indent-enabled) * 2em) !important;
+  text-indent: var(--aindentpaper-indent);
 }
 
-/* 可读行宽下的排除规则（优先级需高于上方 .markdown-preview-sizer p 规则） */
+/* 可读行宽下的排除规则：在元素上重设继承变量，
+   var() 在本元素即解析为 0，不依赖优先级对抗 */
 body.aindentpaper-paragraph-indent-enabled .markdown-preview-view.is-readable-line-width .markdown-preview-sizer li p,
 body.aindentpaper-paragraph-indent-enabled .markdown-preview-view.is-readable-line-width .markdown-preview-sizer table p,
 body.aindentpaper-paragraph-indent-enabled .markdown-preview-view.is-readable-line-width .markdown-preview-sizer blockquote p,
 body.aindentpaper-paragraph-indent-enabled .markdown-preview-view.is-readable-line-width .markdown-preview-sizer .callout p {
-  text-indent: 0 !important;
+  --aindentpaper-indent: 0;
+  text-indent: 0;
 }
 
-/* 文本段落间距和行高（限定在 markdown 视图内，避免影响全局） */
+/* 文本段落间距和行高（限定在 markdown 视图内，避免影响全局）
+   重置 margin 消除 Obsidian 默认的段落间空行，仅保留 padding 作为微量间距，
+   符合中文排版惯例：首行缩进区分段落而非空行。
+   段间距可通过设置面板“文本段间距”滑块微调。 */
 body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered p,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view p,
+body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view p {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  line-height: calc(var(--text-line-height) * 1px);
+  padding-top: calc(var(--text-paragraph-gap) * 1px);
+  padding-bottom: calc(var(--text-paragraph-gap) * 1px);
+}
+
 body.aindentpaper-paragraph-indent-enabled .mod-cm6 .cm-editor .cm-content .cm-line,
 body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered li,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view li,
@@ -171,7 +173,47 @@ body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-typ
   margin-top: 0.2em !important;
 }
 
-/* 排除特定元素 */
+/* =============================================================================
+   段落拆分器独立启用时的紧凑间距
+   =============================================================================
+   场景：“段落首行缩进”关闭 + “段落拆分器”开启
+   拆分后的多个 <p> 应保持紧凑，不产生明显空行。
+   仅对带 data-split-group 的拆分段落生效，不影响普通段落间距。
+   使用 :not(.aindentpaper-paragraph-indent-enabled) 避免与缩进模式的规则冲突。
+   ============================================================================= */
+body.aindentpaper-splitter-enabled:not(.aindentpaper-paragraph-indent-enabled) .markdown-reading-view .markdown-rendered p[data-split-group],
+body.aindentpaper-splitter-enabled:not(.aindentpaper-paragraph-indent-enabled) .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view p[data-split-group] {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+/* 拆分组内相邻段落微量间距（与缩进模式下的 0.2em 一致） */
+body.aindentpaper-splitter-enabled:not(.aindentpaper-paragraph-indent-enabled) .markdown-reading-view .markdown-rendered p[data-split-group] + p[data-split-group],
+body.aindentpaper-splitter-enabled:not(.aindentpaper-paragraph-indent-enabled) .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view p[data-split-group] + p[data-split-group] {
+  margin-top: 0.2em !important;
+}
+
+/* 拆分器独立模式 - 普通段落紧凑间距（新增补充规则，不改动上方既有规则）
+   上方规则限定 p[data-split-group]，但该属性只有被拆分器实际拆分的段落才带有；
+   普通段落（单行、未触发拆分）无此属性，仍保留 Obsidian 默认 ~1em margin，
+   与拆分段落混排时出现明显空行。此规则覆盖全部 <p>，数值与上方既有规则一致
+   （margin 归零 + 2px padding）；带 data-split-group 的段落同时命中两条规则、
+   声明值相同，且 0.2em 相邻微调规则优先级更高仍正常生效，既有行为不变。
+   普通声明即可胜出（选择器优先级高于 Obsidian 默认的 p margin 规则），
+   不引入新的 !important；纯静态类门控，无运行时开销。 */
+body.aindentpaper-splitter-enabled:not(.aindentpaper-paragraph-indent-enabled) .markdown-reading-view .markdown-rendered p,
+body.aindentpaper-splitter-enabled:not(.aindentpaper-paragraph-indent-enabled) .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view p {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+/* 排除特定元素：容器上重设继承变量，其内部所有后代（含嵌套 p）
+   的 var(--aindentpaper-indent) 均解析为 0，无需再为 li p / table p /
+   blockquote p / callout p 等后代单独写排除规则 */
 body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered h1,
 body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered h2,
 body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered h3,
@@ -200,62 +242,56 @@ body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rend
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view .frontmatter,
 body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered .math,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view .math {
-  text-indent: 0 !important;
+  --aindentpaper-indent: 0;
+  text-indent: 0;
 }
 
-/* 开关关闭时，显式强制取消缩进，覆盖主题默认样式 */
+/* 开关关闭时，显式强制取消缩进，覆盖主题默认样式
+   【保留 !important 理由】此处对抗的是第三方主题自带的 text-indent
+   （部分主题以 !important 声明），关闭态必须无条件压制，变量方案不适用 */
 body:not(.aindentpaper-paragraph-indent-enabled) .markdown-reading-view .markdown-rendered p,
 body:not(.aindentpaper-paragraph-indent-enabled) .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view p,
 body:not(.aindentpaper-paragraph-indent-enabled) .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-line:not(.cm-hmd-frontmatter):not(.HyperMD-header):not(.HyperMD-list-line):not(.HyperMD-quote):not(.HyperMD-codeblock):not(.cm-formatting):not([class*="HyperMD-table"]) {
   text-indent: 0 !important;
 }
 
-/* 空段落不缩进 */
+/* 空段落不缩进：在元素自身重设变量，var() 即时解析为 0，
+   无需与主规则做优先级对抗（尤其 .cm-line:empty 优先级低于主规则） */
 body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered p:empty,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view p:empty,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-line:empty {
-  text-indent: 0 !important;
+  --aindentpaper-indent: 0;
+  text-indent: 0;
 }
 
-/* 列表内部段落不缩进 */
-body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered li p,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view li p {
-  text-indent: 0 !important;
+/* 非段落内容不缩进（标签、链接、图片、嵌入等）
+   由 PostProcessor 检测仅包含非文本元素的 <p> 并标记 data-no-indent，
+   这些元素不是正常文本段落，不应被首行缩进。
+   包括：#标签、[[内部链接]]、外部链接、图片、嵌入内容等 */
+body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered p[data-no-indent],
+body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view p[data-no-indent] {
+  --aindentpaper-indent: 0;
+  text-indent: 0;
 }
 
-/* 表格单元格内的段落不缩进 */
-body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered table p,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view table p {
-  text-indent: 0 !important;
+/* 说明：原 li p / table p / blockquote p / .callout p 以及
+   .cm-table-widget 内部各层的逐条排除规则已删除——
+   上方"排除特定元素"与表格容器规则重设了 --aindentpaper-indent，
+   其后代经变量继承自动归零，逐条后代规则在变量架构下均为冗余。 */
+
+/* 强制排除白板：先在白板各级容器上重设继承变量——
+   白板内任何元素即使被缩进规则命中，var() 也解析为 0 */
+body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content[data-type="canvas"],
+body.aindentpaper-paragraph-indent-enabled .canvas-node,
+body.aindentpaper-paragraph-indent-enabled .canvas-wrapper,
+body.aindentpaper-paragraph-indent-enabled .whiteboard-embed,
+body.aindentpaper-paragraph-indent-enabled .workspace-leaf[data-type="canvas"],
+body.aindentpaper-paragraph-indent-enabled .workspace-leaf[data-type="whiteboard"] {
+  --aindentpaper-indent: 0;
 }
 
-/* 编辑视图实时预览表格组件内的内容不缩进 - 高优先级覆盖 */
-/* 此规则已被上方 71-92 行的"表格组件强制排除"规则替代，保留为冗余兜底以防遗漏 */
-/* Obsidian 实时预览模式中表格渲染为 .cm-table-widget 交互组件，
-   其内部 .table-cell-wrapper 和 .cm-line 不应受首行缩进影响 */
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .cm-line,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .table-cell-wrapper,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .cm-content .cm-line,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .cm-contentContainer .cm-line,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget table td,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget table th,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-source-view .cm-table-widget .table-editor {
-  text-indent: 0 !important;
-}
-
-/* 引用块内的段落不缩进 */
-body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered blockquote p,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view blockquote p {
-  text-indent: 0 !important;
-}
-
-/* 标注(callout)内的段落不缩进（callout 基于 blockquote 扩展，需单独排除） */
-body.aindentpaper-paragraph-indent-enabled .markdown-reading-view .markdown-rendered .callout p,
-body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-view .callout p {
-  text-indent: 0 !important;
-}
-
-/* 强制排除白板 */
+/* 白板内 p/.cm-line 普通声明兜底：本组规则位于文件后部，
+   与主规则同优先级时按书写顺序胜出，无需 !important */
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content[data-type="canvas"] .markdown-preview-view p,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content[data-type="canvas"] .markdown-rendered p,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content[data-type="canvas"] .markdown-source-view .cm-line,
@@ -266,8 +302,23 @@ body.aindentpaper-paragraph-indent-enabled .canvas-wrapper p,
 body.aindentpaper-paragraph-indent-enabled .whiteboard-embed p,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf[data-type="canvas"] p,
 body.aindentpaper-paragraph-indent-enabled .workspace-leaf[data-type="whiteboard"] p {
-  text-indent: 0 !important;
-  position: static !important;
+  text-indent: 0;
+  position: static;
+}
+
+/* 白板卡片预览视图 - 段落紧凑间距
+   白板被排除在段落缩进/拆分之外（保持 text-indent:0，拆分器 JS 也跳过白板），
+   但卡片内 <p> 仍保留 Obsidian 默认 ~1em margin，导致段落间空行明显。
+   此处仅压缩 margin 并复用 --text-paragraph-gap 作为微量间距，
+   与笔记预览视图的段间距逻辑一致，可由设置面板滑块统一调节。
+   不触碰 text-indent/position，不影响卡片编辑态（.cm-line 无 margin，无需处理）。 */
+body.aindentpaper-paragraph-indent-enabled .canvas-node .markdown-preview-view p,
+body.aindentpaper-paragraph-indent-enabled .canvas-node .markdown-rendered p,
+body.aindentpaper-paragraph-indent-enabled .workspace-leaf-content[data-type="canvas"] .markdown-preview-view p {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: calc(var(--text-paragraph-gap) * 1px);
+  padding-bottom: calc(var(--text-paragraph-gap) * 1px);
 }
 
 /* =============================================================================
@@ -294,7 +345,7 @@ body.aindentpaper-paragraph-indent-enabled .workspace-leaf[data-type="whiteboard
      - will-change: opacity 提示浏览器将 ::before 提升为GPU合成层并缓存
        （不使用 transform:translateZ(0) — 旧版hack，可引起子像素渲染问题）
      - 不对 .cm-editor 设置 contain — CodeMirror 虚拟渲染自行管理布局
-     - contain: content 仅用于 .markdown-reading-view / .empty-state-container
+     - contain: layout style 用于 .markdown-reading-view / .empty-state-container
      - 伪元素放置在非滚动容器上（.cm-editor / .markdown-reading-view），
        纹理自然固定在可视区域，无需 background-attachment:fixed
      - 使用 .workspace-leaf-content:not([data-type="canvas"]) 限定作用域，
@@ -324,7 +375,7 @@ body.aindentpaper-paragraph-indent-enabled .workspace-leaf[data-type="whiteboard
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .cm-editor {
     position: relative;
     z-index: 0;
-    background-color: var(--background-primary) !important;
+    background-color: var(--background-primary);
 }
 
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .cm-editor::before {
@@ -334,7 +385,7 @@ body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: var(--aindentpaper-paper-texture) !important;
+    background-image: var(--aindentpaper-paper-texture);
     background-size: 200px 200px;
     background-repeat: repeat;
     opacity: var(--aindentpaper-paper-texture-opacity);
@@ -356,23 +407,23 @@ body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="
    - widget 容器保留 background-primary 兜底，防止纹理从编辑器边缘缝隙透出
    - 不改动嵌套编辑器的 position/z-index，避免影响其光标层与拖拽手柄定位 */
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget {
-    background: transparent !important;
+    background: transparent;
 }
 
 /* 表格本体保持纯色背景（与预览视图 table 规则一致）；widget 容器透明，
    使表格四周显示与正文相同的纸质纹理/网格背景，消除编辑视图下表格周围的白色边框区域 */
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget .table-editor,
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget .table-editor {
-    background: var(--background-primary) !important;
+    background: var(--background-primary);
 }
 
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget .cm-editor {
-    background-color: var(--background-primary) !important;
+    background-color: var(--background-primary);
     background-image:
         linear-gradient(to right, var(--grid-line-color-light, rgba(128, 128, 128, 0.08)) 1px, transparent 1px),
-        linear-gradient(to bottom, var(--grid-line-color-light, rgba(128, 128, 128, 0.08)) 1px, transparent 1px) !important;
-    background-size: 20px 20px !important;
-    background-position: center center !important;
+        linear-gradient(to bottom, var(--grid-line-color-light, rgba(128, 128, 128, 0.08)) 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-position: center center;
 }
 
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget .cm-editor::before {
@@ -383,14 +434,23 @@ body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="
 /* 预览视图下表格保持纯色背景，不叠加网格线，避免与内容网格视觉冲突 */
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered table,
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered table {
-    background: var(--background-primary) !important;
+    background: var(--background-primary);
 }
 
 
 /* 编辑器内层元素 - 透明以显示纹理 */
 /* 优化：合并选择器，减少样式匹配开销 */
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .cm-editor :is(.cm-scroller, .cm-content, .cm-contentContainer, .cm-gutters, .cm-gutter, .cm-gutter-element, .cm-activeLine, .cm-activeLineGutter, .cm-line) {
-    background: transparent !important;
+    background: transparent;
+}
+
+/* 编辑视图 - 分割线(hr)可见性增强
+   纸质纹理/网格背景下，Obsidian 默认 --hr-color 透明度极低（约 12%），
+   1px 半透明线在纹理噪点中对比度不足、难以辨识。
+   提升为 --text-muted 确保清晰可见，同时不过于突兀。 */
+body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .cm-editor hr,
+body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor hr {
+    border-color: var(--text-muted);
 }
 
 /* ========== 阅读视图 ========== */
@@ -401,8 +461,8 @@ body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view {
     position: relative;
     z-index: 0;
-    background-color: var(--background-primary) !important;
-    contain: content;
+    background-color: var(--background-primary);
+    contain: layout style;
 }
 
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view::before {
@@ -412,7 +472,7 @@ body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: var(--aindentpaper-paper-texture) !important;
+    background-image: var(--aindentpaper-paper-texture);
     background-size: 200px 200px;
     background-repeat: repeat;
     opacity: var(--aindentpaper-paper-texture-opacity);
@@ -425,7 +485,7 @@ body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="
 /* 阅读视图内层元素 - 透明以显示纹理 */
 /* 优化：合并选择器，减少样式匹配开销 */
 body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view :is(.markdown-preview-view, .markdown-preview-sizer) {
-    background: transparent !important;
+    background: transparent;
 }
 
 
@@ -434,8 +494,8 @@ body.aindentpaper-paper-texture-enabled .workspace-leaf-content:not([data-type="
 body.aindentpaper-paper-texture-enabled .view-content .empty-state-container {
     position: relative;
     z-index: 0;
-    background-color: var(--background-primary) !important;
-    contain: content;
+    background-color: var(--background-primary);
+    contain: layout style;
 }
 
 body.aindentpaper-paper-texture-enabled .view-content .empty-state-container::before {
@@ -445,7 +505,7 @@ body.aindentpaper-paper-texture-enabled .view-content .empty-state-container::be
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: var(--aindentpaper-paper-texture) !important;
+    background-image: var(--aindentpaper-paper-texture);
     background-size: 200px 200px;
     background-repeat: repeat;
     opacity: var(--aindentpaper-paper-texture-opacity);
@@ -476,21 +536,21 @@ body.aindentpaper-paper-texture-enabled .view-content .empty-state-container::be
 
 /* 编辑视图 - 网格背景基础 */
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor {
-    background-color: var(--background-primary) !important;
-    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size) !important;
-    background-position: center center !important;
+    background-color: var(--background-primary);
+    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size);
+    background-position: center center;
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-solid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor {
     background-image:
         linear-gradient(to right, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)),
-        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)) !important;
+        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width));
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-dashed .workspace-leaf-content:not([data-type="canvas"]) .cm-editor {
     background-image:
         repeating-linear-gradient(to right, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)),
-        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)) !important;
+        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4));
 }
 
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor::before {
@@ -498,30 +558,30 @@ body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="can
 }
 
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor :is(.cm-scroller, .cm-content, .cm-contentContainer, .cm-gutters, .cm-gutter, .cm-gutter-element, .cm-activeLine, .cm-activeLineGutter, .cm-line) {
-    background: transparent !important;
+    background: transparent;
 }
 
 /* 编辑视图表格 - 显示网格，与周围一致 */
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget {
-    background: transparent !important;
+    background: transparent;
 }
 
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget .cm-editor {
-    background-color: var(--background-primary) !important;
-    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size) !important;
-    background-position: center center !important;
+    background-color: var(--background-primary);
+    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size);
+    background-position: center center;
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-solid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget .cm-editor {
     background-image:
         linear-gradient(to right, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)),
-        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)) !important;
+        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width));
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-dashed .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget .cm-editor {
     background-image:
         repeating-linear-gradient(to right, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)),
-        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)) !important;
+        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4));
 }
 
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .cm-editor .cm-table-widget .cm-editor::before {
@@ -530,21 +590,21 @@ body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="can
 
 /* 阅读视图 - 网格背景基础 */
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view {
-    background-color: var(--background-primary) !important;
-    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size) !important;
-    background-position: center center !important;
+    background-color: var(--background-primary);
+    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size);
+    background-position: center center;
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-solid .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view {
     background-image:
         linear-gradient(to right, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)),
-        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)) !important;
+        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width));
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-dashed .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view {
     background-image:
         repeating-linear-gradient(to right, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)),
-        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)) !important;
+        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4));
 }
 
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view::before {
@@ -552,7 +612,7 @@ body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="can
 }
 
 body.aindentpaper-paper-texture-grid .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view :is(.markdown-preview-view, .markdown-preview-sizer) {
-    background: transparent !important;
+    background: transparent;
 }
 
 
@@ -604,7 +664,7 @@ body.aindentpaper-canvas-paper-texture .canvas-wrapper::before {
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: var(--aindentpaper-paper-texture) !important;
+    background-image: var(--aindentpaper-paper-texture);
     background-size: 200px 200px;
     background-repeat: repeat;
     opacity: var(--aindentpaper-paper-texture-opacity);
@@ -613,7 +673,9 @@ body.aindentpaper-canvas-paper-texture .canvas-wrapper::before {
     will-change: opacity;
 }
 
-/* 隐藏白板原生网格/点阵背景，避免与纸质纹理视觉冲突 */
+/* 隐藏白板原生网格/点阵背景，避免与纸质纹理视觉冲突
+   【保留 !important 理由】压制 Obsidian 原生幕布背景层的渲染，
+   需无条件覆盖 app 内部样式，普通声明无法可靠胜出 */
 body.aindentpaper-canvas-paper-texture .canvas-background {
     display: none !important;
 }
@@ -627,21 +689,21 @@ body.aindentpaper-canvas-paper-texture .canvas-wrapper .canvas {
 /* 白板幕布 - 网格背景 */
 /* 当"纸质纹理样式"为 grid 且"白板幕布纸质纹理"开启时，用 CSS 网格替换 SVG 纹理 */
 body.aindentpaper-paper-texture-grid.aindentpaper-canvas-paper-texture .canvas-wrapper {
-    background-color: var(--background-primary) !important;
-    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size) !important;
-    background-position: center center !important;
+    background-color: var(--background-primary);
+    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size);
+    background-position: center center;
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-solid.aindentpaper-canvas-paper-texture .canvas-wrapper {
     background-image:
         linear-gradient(to right, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)),
-        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)) !important;
+        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width));
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-dashed.aindentpaper-canvas-paper-texture .canvas-wrapper {
     background-image:
         repeating-linear-gradient(to right, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)),
-        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)) !important;
+        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4));
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-canvas-paper-texture .canvas-wrapper::before {
@@ -649,29 +711,33 @@ body.aindentpaper-paper-texture-grid.aindentpaper-canvas-paper-texture .canvas-w
 }
 
 /* 白板卡片背景 */
-/* 预览视图卡片：不显示网格，保留卡片原本背景色 */
+/* 预览视图卡片：不显示网格，保留卡片原本背景色
+   【保留 !important 理由】历史"卡片变白"bug 的既定修复：需无条件压制
+   上方网格规则与主题对卡片容器的 background-image，确保卡片底色不被覆盖 */
 body.aindentpaper-paper-texture-grid.aindentpaper-canvas-paper-texture .canvas-node .markdown-preview-view,
 body.aindentpaper-paper-texture-grid.aindentpaper-canvas-paper-texture .canvas-node .markdown-reading-view {
     background-image: none !important;
 }
 
-/* 编辑视图卡片：显示网格背景，同时保留卡片原本背景色 */
+/* 编辑视图卡片：显示网格背景，同时保留卡片原本背景色
+   【保留 !important 理由】同上，历史"卡片变白"bug 的既定修复：
+   编辑器背景必须强制透明，卡片自身颜色才能透出 */
 body.aindentpaper-paper-texture-grid.aindentpaper-canvas-paper-texture .canvas-node .cm-editor {
     background-color: transparent !important;
-    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size) !important;
-    background-position: center center !important;
+    background-size: var(--aindentpaper-grid-size) var(--aindentpaper-grid-size);
+    background-position: center center;
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-solid.aindentpaper-canvas-paper-texture .canvas-node .cm-editor {
     background-image:
         linear-gradient(to right, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)),
-        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width)) !important;
+        linear-gradient(to bottom, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width));
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-grid-line-dashed.aindentpaper-canvas-paper-texture .canvas-node .cm-editor {
     background-image:
         repeating-linear-gradient(to right, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)),
-        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4)) !important;
+        repeating-linear-gradient(to bottom, var(--aindentpaper-grid-line-color) 0, var(--aindentpaper-grid-line-color) var(--aindentpaper-grid-line-width), transparent var(--aindentpaper-grid-line-width), transparent calc(var(--aindentpaper-grid-size) / 4));
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-canvas-paper-texture .canvas-node .cm-editor::before {
@@ -679,12 +745,130 @@ body.aindentpaper-paper-texture-grid.aindentpaper-canvas-paper-texture .canvas-n
 }
 
 body.aindentpaper-paper-texture-grid.aindentpaper-canvas-paper-texture .canvas-node .cm-editor :is(.cm-scroller, .cm-content, .cm-contentContainer, .cm-gutters, .cm-gutter, .cm-gutter-element, .cm-activeLine, .cm-activeLineGutter, .cm-line) {
-    background: transparent !important;
+    background: transparent;
 }
 
 /* 白板幕布暗色主题调整 */
 .theme-dark body.aindentpaper-canvas-paper-texture .canvas-wrapper::before {
     background-blend-mode: color-dodge;
+}
+
+/* =============================================================================
+   长文本滚动性能优化（独立开关）
+   =============================================================================
+   核心策略：content-visibility: auto + 局部渲染隔离
+   触发条件：body.aindentpaper-scroll-perf-enabled
+   作用范围：仅预览/阅读视图，不影响编辑视图、纸质纹理、段落缩进、段落拆分
+   原理：
+     - content-visibility:auto 告诉浏览器引擎跳过屏幕外内容块的布局+绘制
+     - contain-intrinsic-size 提供占位高度，保证滚动条正确
+     - 表格/代码块独立 contain: layout paint，缩小重排范围
+     - 滚动容器 will-change: scroll-position 提升合成层
+   边界保障：
+     - 所有规则以 body.aindentpaper-scroll-perf-enabled 门控
+     - 不使用 contain:strict（避免破坏滚动条和内容高度）
+     - 不对每个 <p> 添加 will-change（避免合成层爆炸）
+     - 不影响编辑视图（CodeMirror 自行管理虚拟渲染）
+   ============================================================================= */
+
+/* --- 核心：content-visibility:auto 自动可见性管理 --- */
+/* 仅对重量级容器元素启用（div/table/pre/ul/ol/blockquote）
+   不对 h1-h6/p/hr 启用：
+   - 它们渲染成本极低（单行文本），跳过收益微乎其微
+   - content-visibility:auto 隐含 contain:layout style paint，会打破相邻元素的
+     margin-collapsing（CSS 外边距折叠），导致标题间距异常增大
+   - 段落(p)同理：margin 折叠被破坏会改变原有排版间距 */
+
+/* 预览视图：重量级容器 */
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer > div,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer > table,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer > pre,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer > ul,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer > ol,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer > blockquote {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 100px;
+}
+
+/* 阅读视图：重量级容器 */
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered > div,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered > table,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered > pre,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered > ul,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered > ol,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered > blockquote {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 100px;
+}
+
+/* 表格预估占位高度更大 */
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer > table,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered > table {
+    contain-intrinsic-size: auto 200px;
+}
+
+/* 代码块预估占位高度 */
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer > pre,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered > pre {
+    contain-intrinsic-size: auto 150px;
+}
+
+/* --- 表格/代码块渲染隔离 --- */
+/* 注：不使用 will-change:scroll-position —— 
+   Chromium 的 overflow:auto 容器已自动提升为合成层，手动添加会导致
+   合成器线程与主线程命中测试脱同步，表现为滚动停止后鼠标光标
+   样式短暂失效（无法选中文本）。content-visibility:auto 已提供主要性能收益。 */
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer table,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered table {
+    contain: layout paint;
+    table-layout: fixed;
+    max-width: 100%;
+}
+
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-preview-sizer pre,
+body.aindentpaper-scroll-perf-enabled .workspace-leaf-content:not([data-type="canvas"]) .markdown-reading-view .markdown-rendered pre {
+    contain: layout paint;
+}
+
+
+/* =============================================================================
+   PDF 导出 / 打印模式：段落首行缩进
+   =============================================================================
+   Obsidian 导出 PDF 时使用独立渲染上下文，插件 JavaScript 不会执行，
+   body 上不存在 .aindentpaper-paragraph-indent-enabled 类，因此正常规则全部失效。
+   通过 @media print 直接针对 .markdown-rendered p 应用缩进（该类在打印上下文中始终存在）。
+   排除与正常模式一致的元素：列表、表格、引用、callout、数学公式、frontmatter。
+   【保留 !important 理由】打印上下文中 body 门控类与 JS 注入变量均不存在，
+   无法使用变量继承方案，须以 !important 压制主题/导出模板的默认样式。
+   ============================================================================= */
+@media print {
+  /* 段落首行缩进 + 紧凑排版（无空行），与编辑视图一致 */
+  .markdown-rendered p {
+    text-indent: 2em !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+
+  /* 拆分段落间距微调：与阅读视图 p[data-split-group]+p 规则对齐 */
+  .markdown-rendered p[data-split-group] + p {
+    margin-top: 0.2em !important;
+  }
+
+  /* 排除不需要缩进的段落 */
+  .markdown-rendered li p,
+  .markdown-rendered table p,
+  .markdown-rendered blockquote p,
+  .markdown-rendered .callout p,
+  .markdown-rendered .math p,
+  .markdown-rendered .math-block p,
+  .markdown-rendered .frontmatter p,
+  .markdown-rendered .internal-embed p,
+  .markdown-rendered .external-embed p,
+  .markdown-rendered p[data-no-indent] {
+    text-indent: 0 !important;
+  }
 }
 
 /* === END_OF_FILE === */
