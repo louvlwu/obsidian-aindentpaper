@@ -123,6 +123,31 @@ class ParagraphSplitter {
     }
 
     /**
+     * 判断 <p> 是否为"纯非文本段落"（仅含标签/链接/图片/嵌入等元素，无正文文本）
+     * 判定逻辑与 MarkdownPostProcessor 的 data-no-indent 标记逻辑保持一致。
+     * 用于拆分/合并时对产物即时补判：PostProcessor 只在渲染时执行一次，
+     * 混合段落（文本+<br>+纯标签行）拆分后产生的纯元素行必须在此重新判定。
+     * 仅遍历直接子节点，O(children)，只在拆分/合并动作时调用，无常驻开销。
+     */
+    _isNonTextParagraph(p) {
+        let hasElement = false;
+        for (const node of p.childNodes) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                if (node.nodeValue.trim() !== '') return false;
+                continue;
+            }
+            if (node.nodeType !== Node.ELEMENT_NODE) continue;
+            if (node.matches('a.tag, a.internal-link, a.external-link, img, .internal-embed, .external-embed, br')) {
+                hasElement = true;
+                continue;
+            }
+            /* 其它元素（<strong>/<em>/<code> 等）→ 带格式的文本段落 */
+            return false;
+        }
+        return hasElement;
+    }
+
+    /**
      * 判断一个 <p> 是否需要处理（优化版）
      * 合并 closest 向上遍历为单次
      */
@@ -204,6 +229,16 @@ class ParagraphSplitter {
             }
             newP.setAttribute('data-split-group', groupId);
             for (const n of segNodes) newP.appendChild(n);
+
+            /* 拆分产物即时补判 data-no-indent：
+               混合段落（有文本）不会被 PostProcessor 标记，但拆分出的
+               纯标签/链接/图片行是独立 <p>，须排除首行缩进；
+               反之移除从原段落复制来的过期标记 */
+            if (this._isNonTextParagraph(newP)) {
+                newP.setAttribute('data-no-indent', '');
+            } else {
+                newP.removeAttribute('data-no-indent');
+            }
 
             newParagraphs.push(newP);
         }
@@ -599,8 +634,10 @@ class ParagraphSplitter {
 
             const mergedP = document.createElement('p');
 
+            /* data-no-indent 不随属性复制：首行可能是被标记的纯标签行，
+               合并回混合段落后标记即过期，须按合并结果重新判定 */
             for (const attr of Array.from(firstP.attributes)) {
-                if (attr.name !== 'data-split-group') {
+                if (attr.name !== 'data-split-group' && attr.name !== 'data-no-indent') {
                     mergedP.setAttribute(attr.name, attr.value);
                 }
             }
@@ -613,6 +650,11 @@ class ParagraphSplitter {
                 if (i < ps.length - 1) {
                     mergedP.appendChild(document.createElement('br'));
                 }
+            }
+
+            /* 合并后重判：整段仍为纯非文本内容时恢复标记 */
+            if (this._isNonTextParagraph(mergedP)) {
+                mergedP.setAttribute('data-no-indent', '');
             }
 
             if (!parentSplits.has(parent)) {
@@ -651,6 +693,154 @@ class ParagraphSplitter {
         if (restoredCount > 0) {
             console.log(`[AindentPaper] 已恢复 ${restoredCount} 个被拆分的段落`);
         }
+    }
+}
+
+/* ===========================================================================
+ * 滚动性能预取器：提前渲染即将进入视口的内容块
+ *
+ * 原理：
+ *   CSS content-visibility:auto 使元素在进入视口时才开始渲染，
+ *   快速滚动时大量元素同时触发渲染会造成帧率下降。
+ *   本预取器使用 IntersectionObserver 以 2 个视口高度的提前量
+ *   监听元素，当元素进入“预取区”时将其 content-visibility
+ *   设为 visible，给浏览器充足的预渲染时间，减少空白持续时间。
+ *
+ * 边界控制：
+ *   - 完全独立于段落拆分、纸质纹理、段落缩进等功能
+ *   - 仅操作 style.contentVisibility 属性，不修改 DOM 结构
+ *   - 停止时完全清理，不残留任何副作用
+ * ======================================================================== */
+class ScrollPerfPrefetcher {
+    constructor() {
+        this._observer = null;
+        this._observed = new Set();
+        this._started = false;
+        /* content-visibility 选择器：与 styles.css 中的规则完全对应 */
+        this._selectors = [
+            '.markdown-preview-sizer > div',
+            '.markdown-preview-sizer > table',
+            '.markdown-preview-sizer > pre',
+            '.markdown-preview-sizer > ul',
+            '.markdown-preview-sizer > ol',
+            '.markdown-preview-sizer > blockquote',
+            '.markdown-reading-view .markdown-rendered > div',
+            '.markdown-reading-view .markdown-rendered > table',
+            '.markdown-reading-view .markdown-rendered > pre',
+            '.markdown-reading-view .markdown-rendered > ul',
+            '.markdown-reading-view .markdown-rendered > ol',
+            '.markdown-reading-view .markdown-rendered > blockquote',
+        ].join(',');
+    }
+
+    /**
+     * 启动预取器
+     * 创建 IntersectionObserver，监听当前文档中所有符合条件的内容块
+     */
+    start() {
+        if (this._started) return;
+        this._started = true;
+
+        /* rootMargin: 上下各扩展 200%（约 2 个视口高度），提前触发渲染 */
+        this._observer = new IntersectionObserver(
+            (entries) => {
+                for (const entry of entries) {
+                    if (entry.isIntersecting) {
+                        entry.target.style.contentVisibility = 'visible';
+                        this._observer.unobserve(entry.target);
+                        this._observed.delete(entry.target);
+                    }
+                }
+            },
+            { rootMargin: '200% 0px 200% 0px' }
+        );
+
+        this._observeExisting();
+        this._setupMutationObserver();
+
+        console.log('[AindentPaper] 滚动性能预取器已启动');
+    }
+
+    /**
+     * 观察当前已存在的所有内容块
+     */
+    _observeExisting() {
+        if (!this._observer) return;
+        const leaves = document.querySelectorAll('.workspace-leaf-content:not([data-type="canvas"])');
+        for (const leaf of leaves) {
+            const elements = leaf.querySelectorAll(this._selectors);
+            for (const el of elements) {
+                if (!this._observed.has(el)) {
+                    this._observer.observe(el);
+                    this._observed.add(el);
+                }
+            }
+        }
+    }
+
+    /**
+     * 监听 DOM 变化，对新插入的内容块自动添加观察
+     */
+    _setupMutationObserver() {
+        this._mutObserver = new MutationObserver((mutations) => {
+            if (!this._observer) return;
+            for (const m of mutations) {
+                if (!m.addedNodes || !m.addedNodes.length) continue;
+                for (const node of m.addedNodes) {
+                    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                    /* 检查新加入的节点本身是否匹配 */
+                    if (node.matches && node.matches(this._selectors)) {
+                        if (!this._observed.has(node)) {
+                            this._observer.observe(node);
+                            this._observed.add(node);
+                        }
+                    }
+                    /* 检查新加入的节点内部是否含有匹配元素 */
+                    if (node.querySelectorAll) {
+                        const els = node.querySelectorAll(this._selectors);
+                        for (const el of els) {
+                            if (!this._observed.has(el)) {
+                                this._observer.observe(el);
+                                this._observed.add(el);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const leaves = document.querySelectorAll('.workspace-leaf-content:not([data-type="canvas"])');
+        for (const leaf of leaves) {
+            this._mutObserver.observe(leaf, { childList: true, subtree: true });
+        }
+    }
+
+    /**
+     * 停止预取器，清理所有观察和样式副作用
+     */
+    stop() {
+        if (!this._started) return;
+        this._started = false;
+
+        if (this._mutObserver) {
+            this._mutObserver.disconnect();
+            this._mutObserver = null;
+        }
+
+        if (this._observer) {
+            this._observer.disconnect();
+            this._observer = null;
+        }
+
+        /* 清除已设置的内联 contentVisibility，让 CSS 规则重新接管 */
+        for (const el of this._observed) {
+            if (el && el.style) {
+                el.style.contentVisibility = '';
+            }
+        }
+        this._observed.clear();
+
+        console.log('[AindentPaper] 滚动性能预取器已停止');
     }
 }
 
@@ -728,7 +918,7 @@ const SETTING_GROUPS = [
  * 默认设置生成
  * ======================================================================== */
 function buildDefaultSettings() {
-    const defaults = { paragraphSplitterEnabled: false };
+    const defaults = { paragraphSplitterEnabled: false, scrollPerfEnabled: false };
     for (const group of SETTING_GROUPS) {
         defaults[group.id] = group.default;
         if (group.children) {
@@ -786,6 +976,7 @@ class FirstLineIndentPlugin extends Plugin {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, savedSettings);
 
         this.splitter = new ParagraphSplitter();
+        this.scrollPerfPrefetcher = new ScrollPerfPrefetcher();
 
         this.addSettingTab(new FirstLineIndentSettingTab(this.app, this));
 
@@ -808,6 +999,137 @@ class FirstLineIndentPlugin extends Plugin {
             });
         }
 
+        /* 滚动性能优化预取器：等布局就绪后启动 */
+        if (this.settings.scrollPerfEnabled) {
+            this.app.workspace.onLayoutReady(() => {
+                this.scrollPerfPrefetcher.start();
+            });
+        }
+
+        /* =====================================================================
+         * MarkdownPostProcessor — 段落拆分（PDF 导出 / 打印支持）
+         * =====================================================================
+         * Obsidian 导出 PDF 时使用独立渲染上下文，MutationObserver 不存在，
+         * 但 registerMarkdownPostProcessor 回调仍会执行。
+         * 此处注册轻量级拆分逻辑，确保 PDF 导出时每个段落都能被正确拆分
+         * 从而获得独立的 text-indent。
+         * 
+         * 与 MutationObserver 的共存：
+         *   - PostProcessor 先执行（渲染阶段），设置 data-split-group
+         *   - Observer 后触发（mutation 回调），检测到 data-split-group 自动跳过
+         *   - 不会发生重复拆分
+         * ===================================================================== */
+        let ppSplitCounter = 0;
+        this.registerMarkdownPostProcessor((el) => {
+            if (!this.settings.paragraphSplitterEnabled) return;
+
+            const paragraphs = el.querySelectorAll('p:not([data-split-group])');
+            if (paragraphs.length === 0) return;
+
+            for (const p of paragraphs) {
+                // 快速检查：是否含有 <br> 子元素
+                let hasBr = false;
+                for (const child of p.childNodes) {
+                    if (child.nodeType === Node.ELEMENT_NODE && child.tagName === 'BR') {
+                        hasBr = true;
+                        break;
+                    }
+                }
+                if (!hasBr) continue;
+
+                // 排除：列表/表格/引用/callout/数学/嵌入 内的段落
+                if (p.closest('li, table, blockquote, .callout, .math, .math-block, .internal-embed, .external-embed')) continue;
+
+                // 执行拆分：以 <br> 为边界分割为多个段落
+                const segments = [];
+                let current = [];
+                for (const node of Array.from(p.childNodes)) {
+                    if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
+                        segments.push(current);
+                        current = [];
+                    } else {
+                        current.push(node);
+                    }
+                }
+                segments.push(current);
+
+                // 过滤空段
+                const validSegments = segments.filter(seg =>
+                    seg.some(n =>
+                        (n.nodeType === Node.TEXT_NODE && n.nodeValue.trim() !== '') ||
+                        n.nodeType === Node.ELEMENT_NODE
+                    )
+                );
+                if (validSegments.length <= 1) continue;
+
+                ppSplitCounter++;
+                const groupId = 'pp' + ppSplitCounter;
+                const parent = p.parentNode;
+                if (!parent) continue;
+
+                const fragment = document.createDocumentFragment();
+                for (const segNodes of validSegments) {
+                    const newP = document.createElement('p');
+                    if (p.className) newP.className = p.className;
+                    newP.setAttribute('data-split-group', groupId);
+                    for (const n of segNodes) newP.appendChild(n);
+                    fragment.appendChild(newP);
+                }
+                parent.replaceChild(fragment, p);
+            }
+        });
+
+        /* =====================================================================
+         * MarkdownPostProcessor — 非段落元素缩进排除
+         * =====================================================================
+         * 检测阅读视图中仅包含标签(#tag)、内部链接([[...]])、外部链接、
+         * 图片、嵌入等非文本内容的 <p> 元素，标记 data-no-indent 属性
+         * 以便 CSS 排除其首行缩进。
+         * 运行时机：每个 section 渲染时执行一次，包括 PDF 导出。
+         * ===================================================================== */
+        this.registerMarkdownPostProcessor((el) => {
+            const paragraphs = el.querySelectorAll('p:not([data-no-indent])');
+            if (paragraphs.length === 0) return;
+
+            for (const p of paragraphs) {
+                // 快速跳过：如果有非空白文本节点，说明是正常段落，不处理
+                let hasText = false;
+                let hasNonTextElement = false;
+
+                for (const node of p.childNodes) {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        if (node.nodeValue.trim() !== '') {
+                            hasText = true;
+                            break;
+                        }
+                    } else if (node.nodeType === Node.ELEMENT_NODE) {
+                        hasNonTextElement = true;
+                    }
+                }
+
+                // 有文本内容 → 正常段落，保留缩进
+                if (hasText) continue;
+                // 无任何元素 → 空段落，跳过
+                if (!hasNonTextElement) continue;
+
+                // 检查所有子元素是否都是“非段落文本”类型
+                let allNonText = true;
+                for (const node of p.childNodes) {
+                    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                    const el = node;
+                    // 允许的非段落元素：标签、内部链接、外部链接、图片、嵌入
+                    if (el.matches('a.tag, a.internal-link, a.external-link, img, .internal-embed, .external-embed, br')) continue;
+                    // 其它元素（如 <strong>、<em>、<code>）→ 这是带格式的文本段落
+                    allNonText = false;
+                    break;
+                }
+
+                if (allNonText) {
+                    p.setAttribute('data-no-indent', '');
+                }
+            }
+        });
+        
         this.addCommand({
             id: 'aindentpaper-rescan-paragraphs',
             name: '重新扫描并拆分段落',
@@ -828,6 +1150,7 @@ class FirstLineIndentPlugin extends Plugin {
                 this.settings.paragraphSplitterEnabled = !this.settings.paragraphSplitterEnabled;
                 this.saveSettings();
                 this.splitter.setEnabled(this.settings.paragraphSplitterEnabled);
+                document.body.classList.toggle('aindentpaper-splitter-enabled', this.settings.paragraphSplitterEnabled);
                 new Notice(`AindentPaper: 段落拆分器已${this.settings.paragraphSplitterEnabled ? '启用' : '禁用'}`);
             }
         });
@@ -851,7 +1174,63 @@ class FirstLineIndentPlugin extends Plugin {
             this.splitter.stop();
             this.splitter = null;
         }
-        console.log('[AindentPaper] 插件已卸载');
+
+        if (this.scrollPerfPrefetcher) {
+            this.scrollPerfPrefetcher.stop();
+            this.scrollPerfPrefetcher = null;
+        }
+
+        /* 完整清理：移除插件添加的所有 body 类和内联 CSS 变量
+           确保禁用插件后不残留任何视觉副作用 */
+        const body = document.body;
+        const root = document.documentElement;
+
+        // 移除 SETTING_GROUPS 中的 body 类
+        for (const group of SETTING_GROUPS) {
+            body.classList.remove(group.id);
+            if (group.children) {
+                for (const child of group.children) {
+                    if (child.type === 'class-toggle-sub') {
+                        body.classList.remove(child.id);
+                    }
+                }
+            }
+        }
+
+        // 移除性能优化 body 类
+        body.classList.remove('aindentpaper-scroll-perf-enabled');
+
+        // 移除段落拆分器 body 类
+        body.classList.remove('aindentpaper-splitter-enabled');
+
+        // 移除网格线样式类
+        body.classList.remove('aindentpaper-grid-line-solid');
+        body.classList.remove('aindentpaper-grid-line-dashed');
+
+        // 移除插件设置的所有内联 CSS 变量
+        for (const group of SETTING_GROUPS) {
+            if (!group.children) continue;
+            for (const child of group.children) {
+                if (child.varName) {
+                    root.style.removeProperty(child.varName);
+                    body.style.removeProperty(child.varName);
+                }
+            }
+        }
+        // 清理额外已知变量（网格/纹理相关）
+        const extraVars = [
+            '--aindentpaper-paper-texture',
+            '--aindentpaper-grid-line-color-light',
+            '--aindentpaper-grid-line-color-dark',
+            '--aindentpaper-grid-size',
+            '--aindentpaper-grid-line-width',
+        ];
+        for (const v of extraVars) {
+            root.style.removeProperty(v);
+            body.style.removeProperty(v);
+        }
+
+        console.log('[AindentPaper] 插件已卸载，所有副作用已清理');
     }
 
     async saveSettings() {
@@ -900,6 +1279,20 @@ class FirstLineIndentPlugin extends Plugin {
 
         if (this.splitter) {
             this.splitter.setEnabled(this.settings.paragraphSplitterEnabled !== false);
+        }
+
+        /* 应用段落拆分器 body 类（独立于 SETTING_GROUPS） */
+        body.classList.toggle('aindentpaper-splitter-enabled', this.settings.paragraphSplitterEnabled !== false);
+
+        /* 应用滚动性能优化开关 */
+        const scrollPerfOn = this.settings.scrollPerfEnabled === true;
+        document.body.classList.toggle('aindentpaper-scroll-perf-enabled', scrollPerfOn);
+        if (this.scrollPerfPrefetcher) {
+            if (scrollPerfOn) {
+                this.scrollPerfPrefetcher.start();
+            } else {
+                this.scrollPerfPrefetcher.stop();
+            }
         }
 
         /* 应用网格背景相关设置（即使当前未选择 grid，也预置变量便于切换） */
@@ -1100,6 +1493,24 @@ class FirstLineIndentSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.paragraphSplitterEnabled = value;
                     this.plugin.splitter.setEnabled(value);
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('长文本滚动性能优化(实验性功能)')
+            .setDesc('优化预览视图快速滚动时的卡顿问题。使用 content-visibility 跳过屏幕外元素渲染，缓解长文本（10万字+）阅读体验。完全独立于其他功能，可随时开关，按需使用。')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.scrollPerfEnabled === true)
+                .onChange(async (value) => {
+                    this.plugin.settings.scrollPerfEnabled = value;
+                    document.body.classList.toggle('aindentpaper-scroll-perf-enabled', value);
+                    if (this.plugin.scrollPerfPrefetcher) {
+                        if (value) {
+                            this.plugin.scrollPerfPrefetcher.start();
+                        } else {
+                            this.plugin.scrollPerfPrefetcher.stop();
+                        }
+                    }
                     await this.plugin.saveSettings();
                 }));
 
